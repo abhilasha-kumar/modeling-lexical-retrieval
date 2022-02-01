@@ -1,0 +1,301 @@
+---
+title: "plots for lexical retrieval project"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# packages
+
+```{r}
+library(tidyverse)
+library(tidyboot)
+library(ggplot2)
+library(ggthemes)
+library(broom)
+library(lme4)
+library(lmerTest)
+library(caret)
+```
+
+# drive download
+
+```{r}
+lexical_data = read.csv(sprintf("https://docs.google.com/uc?id=%s&export=download", '1ssvmD44e2M2kmrEU11utRZ31Lryfj_IC'))
+
+behavioral = read_csv("Julie_2021data.csv")
+```
+
+# prime accuracy
+
+```{r}
+behavioral %>% 
+    group_by(PrimeCondition) %>%
+    summarise_each(funs(mean,sd,se=sd(.)/sqrt(n())), NewAccuracy)
+```
+
+# states figure
+
+```{r}
+states_data = behavioral %>%
+  mutate(response = ifelse(NewAccuracy == 1, "correct", 
+                           ifelse(Resp == "12345", "no response", "incorrect"))) %>%
+  select(Subject, Resp, Target, response, Question.RESP) %>%
+  group_by(Question.RESP, response) %>%
+  summarise(trials = n()) %>%
+  mutate(Question.RESP = factor(Question.RESP))
+         
+
+states_data %>%
+  rename(state = Question.RESP) %>%
+  mutate(state = fct_recode(state, know = "1", `don't know` = "2",
+                            `other\nword\nin mind` = "3", `tip of\n tongue` = "4"))%>%
+ggplot(aes(x = state, y = trials, group = response, fill = response)) +
+      geom_bar(position="stack", stat="identity")+
+  theme_few()+
+    scale_fill_manual(values = c("forestgreen", "darksalmon", "gray48"))+
+  labs( x = "")+
+   theme(axis.title = element_text(size = rel(2)),
+          legend.title = element_text(face = "bold", size = rel(2)),
+         legend.text = element_text( size = rel(2)),
+         plot.title = element_text(hjust = .5,size = rel(2.5)),
+         axis.text.x = element_text( size = rel(2)))
+```
+
+
+
+# overall plot
+
+```{r}
+overall_data = lexical_data %>% group_by(modelType, theta) %>%
+  summarise(NLL = sum(NLL), n = n()) %>%
+  mutate(k = ifelse(theta == 1.1, 3, ifelse(theta == 1.2, 1, ifelse(theta %in% c(0,1), 2, 4))),
+         BIC = k*log(n) -(-2*NLL),
+         model = ifelse(modelType == "none", "desc\nonly",
+                        ifelse(modelType == "mult", "mult",
+                               ifelse(theta == 0, "phon\nonly", ifelse(theta == 1, "sem\nonly", ifelse(theta == .1, "add\n.1", ifelse(theta == .2, "add\n.2", ifelse(theta == .3, "add\n.3",
+ifelse(theta == .4, "add\n.4", ifelse(theta == .5, "add\n.5", ifelse(theta == .6, "add\n.6",
+ifelse(theta == .7, "add\n.7",ifelse(theta == .8, "add\n.8", 
+                                  ifelse(theta == .9, "add\n.9", modelType))))))))))))))%>%
+    arrange(desc(BIC))
+
+overall_data = overall_data %>% 
+  mutate(model = fct_relevel(model, "phon\nonly", "add\n.1","add\n.2","add\n.3","add\n.4",
+                             "add\n.5","add\n.6","add\n.7","add\n.8","add\n.9",
+                             "sem\nonly", "mult","desc\nonly"))
+
+overall_data$lagBIC = lag(overall_data$BIC)
+
+overall_data = overall_data %>% mutate(deltaBIC = round(lagBIC-BIC,2))
+
+overall_data %>% 
+  ggplot(aes(x = model, y = deltaBIC)) +
+  geom_point(color = "chartreuse4")+
+  geom_bar(data = overall_data %>% filter( model %in% c("mult", "desc\nonly")),
+           stat = "identity", position = "dodge", width = 0.7, color= "black",
+    fill = "chartreuse4")+
+         geom_line(data = overall_data %>% filter(!model %in% c("mult", "desc\nonly")),
+ group = 1, color = "chartreuse4")+
+  theme_few()+
+  labs( x = "")+
+  #coord_cartesian(ylim=c(179700,183000))+
+   theme(axis.title = element_text(size = rel(2)),
+          legend.title = element_text(face = "bold", size = rel(1)),
+         plot.title = element_text(hjust = .5,size = rel(2.5)),
+         axis.text.x = element_text( size = rel(2)))
+
+```
+
+
+# prime-based plot
+```{r}
+primes_data = lexical_data %>% group_by(PrimeCondition, modelType, theta) %>%
+  summarise(NLL = sum(NLL), n = n()) %>%
+  mutate(k = ifelse(theta == 1.1, 3, ifelse(theta == 1.2, 1, ifelse(theta %in% c(0,1), 2, 4))),
+         BIC = k*log(n) -(-2*NLL),
+         model = ifelse(modelType == "none", "desc\nonly",
+                        ifelse(modelType == "mult", "mult",
+                               ifelse(theta == 0, "phon\nonly", ifelse(theta == 1, "sem\nonly", ifelse(theta == .1, "add\n.1", ifelse(theta == .2, "add\n.2", ifelse(theta == .3, "add\n.3",
+ifelse(theta == .4, "add\n.4", ifelse(theta == .5, "add\n.5", ifelse(theta == .6, "add\n.6",
+ifelse(theta == .7, "add\n.7",ifelse(theta == .8, "add\n.8", 
+                                  ifelse(theta == .9, "add\n.9", modelType))))))))))))))
+
+primes_data = primes_data %>% 
+  ## rescale unrelated BICs for plotting
+  mutate(model = fct_relevel(model, "phon\nonly", "add\n.1","add\n.2","add\n.3","add\n.4",
+                             "add\n.5","add\n.6","add\n.7","add\n.8","add\n.9",
+                             "sem\nonly", "mult","desc\nonly"),
+         PrimeCondition = fct_recode(PrimeCondition, 
+                                     phonological = "P", semantic = "R", both = "B", 
+                                     unrelated = "U"),
+         PrimeCondition = fct_relevel(PrimeCondition, "phonological", "semantic", "both",
+                                      "unrelated")) %>%
+  rename(prime = PrimeCondition)
+
+sem_range = range(primes_data %>% filter(prime == "semantic") %>% pull(BIC))
+phon_range = range(primes_data %>% filter(prime == "phonological") %>% pull(BIC))
+both_range = range(primes_data %>% filter(prime == "both") %>% pull(BIC))
+unrelated_range = range(primes_data %>% filter(prime == "unrelated") %>% pull(BIC))
+
+colors = c("royalblue4", "darkorange", "darkorchid1", "gold")
+
+## render in 11 x 20
+
+semantic = primes_data %>%
+  filter(prime == "semantic")%>%
+  ggplot(aes(x = model, y = BIC)) +
+  geom_point(data = (primes_data %>%
+  filter(prime == "semantic")), size = 2, color = colors[1])+
+  geom_line(data = (primes_data %>%
+  filter(prime == "semantic" & !model %in% c("mult", "desc\nonly"))),
+  group = 1, color = colors[1])+
+  geom_bar(data = (primes_data %>%
+  filter(prime == "semantic" & model %in% c("mult", "desc\nonly"))), 
+  stat = "identity", position = "dodge", width = 0.7, color= "black", fill = colors[1])+
+coord_cartesian(ylim = sem_range)+
+  theme_few()+
+  labs(title = "semantic", x = "")+
+    theme(axis.title = element_text(size = rel(2.5)),
+          legend.title = element_text(face = "bold", size = rel(2.5)),
+         legend.text  = element_text(size = rel(2.5)),
+         plot.title = element_text(hjust = .5, size = rel(3)),
+         strip.text.x = element_text(size = rel(2.5)),
+         axis.text.x = element_text(size = rel(2.5)))
+
+phon = primes_data %>%
+  filter(prime == "phonological")%>%
+  ggplot(aes(x = model, y = BIC)) +
+  geom_point(data = (primes_data %>%
+  filter(prime == "phonological")), size = 2, color = colors[2])+
+  geom_line(data = (primes_data %>%
+  filter(prime == "phonological" & !model %in% c("mult", "desc\nonly"))),
+  group = 1, color = colors[2])+
+  geom_bar(data = (primes_data %>%
+  filter(prime == "phonological" & model %in% c("mult", "desc\nonly"))), 
+  stat = "identity", position = "dodge", width = 0.7, color= "black", fill = colors[2])+
+coord_cartesian(ylim = phon_range)+
+  theme_few()+
+  labs(title = "phonological", x = "")+
+    theme(axis.title = element_text(size = rel(2.5)),
+          legend.title = element_text(face = "bold", size = rel(2.5)),
+         legend.text  = element_text(size = rel(2.5)),
+         plot.title = element_text(hjust = .5, size = rel(3)),
+         strip.text.x = element_text(size = rel(2.5)),
+         axis.text.x = element_text(size = rel(2.5)))
+
+both = primes_data %>%
+  filter(prime == "both")%>%
+  ggplot(aes(x = model, y = BIC)) +
+  geom_point(data = (primes_data %>%
+  filter(prime == "both")), size = 2, color = colors[3])+
+  geom_line(data = (primes_data %>%
+  filter(prime == "both" & !model %in% c("mult", "desc\nonly"))),
+  group = 1, color = colors[3])+
+  geom_bar(data = (primes_data %>%
+  filter(prime == "both" & model %in% c("mult", "desc\nonly"))), 
+  stat = "identity", position = "dodge", width = 0.7, color= "black", fill = colors[3])+
+coord_cartesian(ylim = both_range)+
+  theme_few()+
+  labs(title = "both", x = "")+
+    theme(axis.title = element_text(size = rel(2.5)),
+          legend.title = element_text(face = "bold", size = rel(2.5)),
+         legend.text  = element_text(size = rel(2.5)),
+         plot.title = element_text(hjust = .5, size = rel(3)),
+         strip.text.x = element_text(size = rel(2.5)),
+         axis.text.x = element_text(size = rel(2.5)))
+
+unrelated = primes_data %>%
+  filter(prime == "unrelated")%>%
+  ggplot(aes(x = model, y = BIC)) +
+  geom_point(data = (primes_data %>%
+  filter(prime == "unrelated")), size = 2, color = colors[4])+
+  geom_line(data = (primes_data %>%
+  filter(prime == "unrelated" & !model %in% c("mult", "desc\nonly"))),
+  group = 1, color = colors[4])+
+  geom_bar(data = (primes_data %>%
+  filter(prime == "unrelated" & model %in% c("mult", "desc\nonly"))), 
+  stat = "identity", position = "dodge", width = 0.7, color= "black", fill = colors[4])+
+coord_cartesian(ylim = unrelated_range)+
+  theme_few()+
+  labs(title = "unrelated", x = "model")+
+    theme(axis.title = element_text(size = rel(2.5)),
+          legend.title = element_text(face = "bold", size = rel(2.5)),
+         legend.text  = element_text(size = rel(2.5)),
+         plot.title = element_text(hjust = .5, size = rel(3)),
+         strip.text.x = element_text(size = rel(2.5)),
+         axis.text.x = element_text(size = rel(2.5)))
+
+gridExtra::grid.arrange(semantic, phon, both, unrelated, nrow = 4)
+```
+
+
+
+# correct/incorrect plot
+```{r}
+accuracy_data = lexical_data %>% group_by(NewAccuracy, modelType, theta) %>%
+  summarise(NLL = sum(NLL), n = n()) %>%
+  mutate(k = ifelse(theta == 1.1, 3, ifelse(theta == 1.2, 1, ifelse(theta %in% c(0,1), 2, 4))),
+         BIC = k*log(n) -(-2*NLL),
+         model = ifelse(modelType == "none", "desc\nonly",
+                        ifelse(modelType == "mult", "mult",
+                               ifelse(theta == 0, "phon\nonly", ifelse(theta == 1, "sem\nonly", ifelse(theta == .1, "add\n.1", ifelse(theta == .2, "add\n.2", ifelse(theta == .3, "add\n.3",
+ifelse(theta == .4, "add\n.4", ifelse(theta == .5, "add\n.5", ifelse(theta == .6, "add\n.6",
+ifelse(theta == .7, "add\n.7",ifelse(theta == .8, "add\n.8", 
+                                  ifelse(theta == .9, "add\n.9", modelType))))))))))))))
+
+accuracy_data = accuracy_data %>% 
+  mutate(model = fct_relevel(model, "phon\nonly", "add\n.1","add\n.2","add\n.3","add\n.4",
+                             "add\n.5","add\n.6","add\n.7","add\n.8","add\n.9",
+                             "sem\nonly", "mult","desc\nonly"))
+
+correct_range = range(accuracy_data %>% filter(NewAccuracy == 1) %>% pull(BIC))
+incorrect_range = range(accuracy_data %>% filter(NewAccuracy == 0) %>% pull(BIC))
+
+correct = accuracy_data %>%
+  filter(NewAccuracy == 1)%>%
+  ggplot(aes(x = model, y = BIC)) +
+  geom_point(data = (accuracy_data %>%
+  filter(NewAccuracy == 1)), size = 2, color = "forestgreen")+
+  geom_line(data = (accuracy_data %>%
+  filter(NewAccuracy == 1 & !model %in% c("mult", "desc\nonly"))),
+  group = 1, color = "forestgreen")+
+  geom_bar(data = (accuracy_data %>%
+  filter(NewAccuracy == 1 & model %in% c("mult", "desc\nonly"))), 
+  stat = "identity", position = "dodge", width = 0.7, color= "black", fill = "forestgreen")+
+coord_cartesian(ylim = correct_range)+
+  theme_few()+
+  labs(title = "correct trials", x = "")+
+    theme(axis.title = element_text(size = rel(2.5)),
+          legend.title = element_text(face = "bold", size = rel(2.5)),
+         legend.text  = element_text(size = rel(2.5)),
+         plot.title = element_text(hjust = .5, size = rel(3)),
+         strip.text.x = element_text(size = rel(2.5)),
+         axis.text.x = element_text(size = rel(2.5)))
+
+incorrect = accuracy_data %>%
+  filter(NewAccuracy == 0)%>%
+  ggplot(aes(x = model, y = BIC)) +
+  geom_point(data = (accuracy_data %>%
+  filter(NewAccuracy == 0)), size = 2, color = "darksalmon")+
+  geom_line(data = (accuracy_data %>%
+  filter(NewAccuracy == 0 & !model %in% c("mult", "desc\nonly"))),
+  group = 1, color = "darksalmon")+
+  geom_bar(data = (accuracy_data %>%
+  filter(NewAccuracy == 0 & model %in% c("mult", "desc\nonly"))), 
+  stat = "identity", position = "dodge", width = 0.7, color= "black", fill = "darksalmon")+
+coord_cartesian(ylim = incorrect_range)+
+  theme_few()+
+  labs(title = "incorrect trials", x = "model")+
+    theme(axis.title = element_text(size = rel(2.5)),
+          legend.title = element_text(face = "bold", size = rel(2.5)),
+         legend.text  = element_text(size = rel(2.5)),
+         plot.title = element_text(hjust = .5, size = rel(3)),
+         strip.text.x = element_text(size = rel(2.5)),
+         axis.text.x = element_text(size = rel(2.5)))
+
+gridExtra::grid.arrange(correct, incorrect, nrow = 2)
+```
+
+
