@@ -23,6 +23,7 @@ lexical_data = read.csv(sprintf("https://docs.google.com/uc?id=%s&export=downloa
 behavioral = read_csv("data/Julie_2021data.csv")
 ```
 
+
 # figure 3: prime-based plot
 ```{r}
 primes_data = lexical_data %>% group_by(PrimeCondition, modelType, theta) %>%
@@ -37,6 +38,7 @@ primes_data = lexical_data %>% group_by(PrimeCondition, modelType, theta) %>%
           ifelse(theta == .5, "add\n.5", ifelse(theta == .6, "add\n.6",
           ifelse(theta == .7, "add\n.7",ifelse(theta == .8, "add\n.8", 
           ifelse(theta == .9, "add\n.9", modelType))))))))))))))
+
 
 primes_data = primes_data %>% 
   ## rescale unrelated BICs for plotting
@@ -247,6 +249,186 @@ ggplot(aes(x = state, y = trials, group = response, fill = response)) +
 
 ggsave("plots/fig5plot.pdf", fig5plot, width = 10, height = 10)
 ```
+
+# other plots (for poster/talks)
+
+## table 2 plot 
+
+```{r}
+table2data = lexical_data %>% group_by(modelType, theta) %>%
+  summarise(NLL = sum(NLL), n = n()) %>%
+  mutate(k = ifelse(theta == 1.1, 3, ifelse(theta == 1.2, 1, ifelse(theta %in% c(0,1), 2, 4))),
+         BIC = k*log(n) -(-2*NLL),
+         model = ifelse(modelType == "none", "desc\nonly",
+                        ifelse(modelType == "mult", "mult",
+          ifelse(theta == 0, "phon\nonly", ifelse(theta == 1, "sem\nonly", 
+          ifelse(theta == .1, "add\n.1", ifelse(theta == .2, "add\n.2", 
+          ifelse(theta == .3, "add\n.3", ifelse(theta == .4, "add\n.4", 
+          ifelse(theta == .5, "add\n.5", ifelse(theta == .6, "add\n.6",
+          ifelse(theta == .7, "add\n.7",ifelse(theta == .8, "add\n.8", 
+          ifelse(theta == .9, "add\n.9", modelType))))))))))))))
+
+
+table2data = table2data %>% 
+  ## rescale unrelated BICs for plotting
+  mutate(model = fct_relevel(model, "phon\nonly", "add\n.1","add\n.2","add\n.3","add\n.4",
+                             "add\n.5","add\n.6","add\n.7","add\n.8","add\n.9",
+                             "sem\nonly", "mult","desc\nonly"))
+
+table2_range = range(table2data %>% pull(BIC))
+
+
+colors = c("royalblue4", "darkorange", "darkorchid1", "gold")
+
+## render in 11 x 5
+
+table2plot = table2data %>%
+  ggplot(aes(x = model, y = BIC)) +
+  geom_point(size = 2, color = colors[1])+
+  geom_line(data = (table2data %>%
+  filter(!model %in% c("mult", "desc\nonly"))),
+  group = 1, color = colors[1])+
+  geom_bar(data = (table2data %>%
+  filter( model %in% c("mult", "desc\nonly"))), 
+  stat = "identity", position = "dodge", width = 0.7, color= "black", fill = colors[1])+
+coord_cartesian(ylim = table2_range)+
+  theme_few()+
+  labs(title = "overall BIC", x = "")+
+    theme(axis.title = element_text(size = rel(2.5)),
+          legend.title = element_text(face = "bold", size = rel(2.5)),
+         legend.text  = element_text(size = rel(2.5)),
+         plot.title = element_text(hjust = .5, size = rel(3)),
+         strip.text.x = element_text(size = rel(2.5)),
+         axis.text.x = element_text(size = rel(2.5)))
+
+table2plot
+ggsave("plots/table2plot.pdf", table2plot, width = 11, height = 5)
+
+```
+
+## table 3 plot
+
+```{r}
+states_data = lexical_data %>% group_by(Question.RESP, modelType, theta) %>%
+  summarise(NLL = sum(NLL), n = n()) %>%
+  mutate(k = ifelse(theta == 1.1, 3, ifelse(theta == 1.2, 1, ifelse(theta %in% c(0,1), 2, 4))),
+         BIC = k*log(n) -(-2*NLL),
+         model = ifelse(modelType == "none", "desc\nonly",
+                        ifelse(modelType == "mult", "mult",
+          ifelse(theta == 0, "phon\nonly", ifelse(theta == 1, "sem\nonly", 
+          ifelse(theta == .1, "add\n.1", ifelse(theta == .2, "add\n.2", 
+          ifelse(theta == .3, "add\n.3", ifelse(theta == .4, "add\n.4", 
+          ifelse(theta == .5, "add\n.5", ifelse(theta == .6, "add\n.6",
+          ifelse(theta == .7, "add\n.7",ifelse(theta == .8, "add\n.8", 
+          ifelse(theta == .9, "add\n.9", modelType))))))))))))))
+
+states_data = states_data %>% 
+  mutate(model = fct_relevel(model, "phon\nonly", "add\n.1","add\n.2","add\n.3","add\n.4",
+                             "add\n.5","add\n.6","add\n.7","add\n.8","add\n.9",
+                             "sem\nonly", "mult","desc\nonly"))%>%
+  rename(state = Question.RESP) %>%
+  mutate(state = as.factor(state))%>%
+  mutate(state = fct_recode(state, know = "1", `don't know` = "2",
+                            `other\nword\nin mind` = "3", `tip of\n tongue` = "4"))
+
+know_range = range(states_data %>% filter(state == "know") %>% pull(BIC))
+dk_range = range(states_data %>% filter(state == "don't know") %>% pull(BIC))
+other_range = range(states_data %>% filter(state == "other\nword\nin mind") %>% pull(BIC))
+tot_range = range(states_data %>% filter(state == "tip of\n tongue") %>% pull(BIC))
+
+colors = c("darkgreen", "brown", "orange", "purple")
+
+## render in 11 x 20
+
+know = states_data %>%
+  filter(state == "know")%>%
+  ggplot(aes(x = model, y = BIC)) +
+  geom_point(data = (states_data %>%
+  filter(state == "know")), size = 2, color = colors[1])+
+  geom_line(data = (states_data %>%
+  filter(state == "know" & !model %in% c("mult", "desc\nonly"))),
+  group = 1, color = colors[1])+
+  geom_bar(data = (states_data %>%
+  filter(state == "know" & model %in% c("mult", "desc\nonly"))), 
+  stat = "identity", position = "dodge", width = 0.7, color= "black", fill = colors[1])+
+coord_cartesian(ylim = know_range)+
+  theme_few()+
+  labs(title = "know", x = "")+
+    theme(axis.title = element_text(size = rel(2.5)),
+          legend.title = element_text(face = "bold", size = rel(2.5)),
+         legend.text  = element_text(size = rel(2.5)),
+         plot.title = element_text(hjust = .5, size = rel(3)),
+         strip.text.x = element_text(size = rel(2.5)),
+         axis.text.x = element_text(size = rel(2.5)))
+
+dontknow = states_data %>%
+  filter(state == "don't know")%>%
+  ggplot(aes(x = model, y = BIC)) +
+  geom_point(data = (states_data %>%
+  filter(state == "don't know")), size = 2, color = colors[2])+
+  geom_line(data = (states_data %>%
+  filter(state == "don't know" & !model %in% c("mult", "desc\nonly"))),
+  group = 1, color = colors[2])+
+  geom_bar(data = (states_data %>%
+  filter(state == "don't know" & model %in% c("mult", "desc\nonly"))), 
+  stat = "identity", position = "dodge", width = 0.7, color= "black", fill = colors[2])+
+coord_cartesian(ylim = dk_range)+
+  theme_few()+
+  labs(title = "don't know", x = "")+
+    theme(axis.title = element_text(size = rel(2.5)),
+          legend.title = element_text(face = "bold", size = rel(2.5)),
+         legend.text  = element_text(size = rel(2.5)),
+         plot.title = element_text(hjust = .5, size = rel(3)),
+         strip.text.x = element_text(size = rel(2.5)),
+         axis.text.x = element_text(size = rel(2.5)))
+
+other = states_data %>%
+  filter(state == "other\nword\nin mind")%>%
+  ggplot(aes(x = model, y = BIC)) +
+  geom_point(data = (states_data %>%
+  filter(state == "other\nword\nin mind")), size = 2, color = colors[3])+
+  geom_line(data = (states_data %>%
+  filter(state == "other\nword\nin mind" & !model %in% c("mult", "desc\nonly"))),
+  group = 1, color = colors[3])+
+  geom_bar(data = (states_data %>%
+  filter(state == "other\nword\nin mind" & model %in% c("mult", "desc\nonly"))), 
+  stat = "identity", position = "dodge", width = 0.7, color= "black", fill = colors[3])+
+coord_cartesian(ylim = other_range)+
+  theme_few()+
+  labs(title = "other word in mind", x = "")+
+    theme(axis.title = element_text(size = rel(2.5)),
+          legend.title = element_text(face = "bold", size = rel(2.5)),
+         legend.text  = element_text(size = rel(2.5)),
+         plot.title = element_text(hjust = .5, size = rel(3)),
+         strip.text.x = element_text(size = rel(2.5)),
+         axis.text.x = element_text(size = rel(2.5)))
+
+tot = states_data %>%
+  filter(state == "tip of\n tongue")%>%
+  ggplot(aes(x = model, y = BIC)) +
+  geom_point(data = (states_data %>%
+  filter(state == "tip of\n tongue")), size = 2, color = colors[4])+
+  geom_line(data = (states_data %>%
+  filter(state == "tip of\n tongue" & !model %in% c("mult", "desc\nonly"))),
+  group = 1, color = colors[4])+
+  geom_bar(data = (states_data %>%
+  filter(state == "tip of\n tongue" & model %in% c("mult", "desc\nonly"))), 
+  stat = "identity", position = "dodge", width = 0.7, color= "black", fill = colors[4])+
+coord_cartesian(ylim = tot_range)+
+  theme_few()+
+  labs(title = "tip of the tongue", x = "")+
+    theme(axis.title = element_text(size = rel(2.5)),
+          legend.title = element_text(face = "bold", size = rel(2.5)),
+         legend.text  = element_text(size = rel(2.5)),
+         plot.title = element_text(hjust = .5, size = rel(3)),
+         strip.text.x = element_text(size = rel(2.5)),
+         axis.text.x = element_text(size = rel(2.5)))
+
+table3plot = gridExtra::grid.arrange(know, dontknow, other, tot, nrow = 4)
+ggsave("plots/table3plot.pdf", table3plot, width = 11, height = 20)
+```
+
+
 
 
 
